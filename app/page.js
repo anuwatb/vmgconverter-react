@@ -1,103 +1,111 @@
-import Image from "next/image";
+'use client';
+
+import { useRef, useState } from 'react';
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const vmgfilesInput = useRef(null);
+  const [preview, setPreview] = useState("Preview of the JSON file will be here.");
+  const [disabledDownload, setDisabledDownload] = useState(true);
+  
+  const toDecodeURI = (text, numCharToDelete) => {
+    try {
+      return decodeURI(text.slice(0, -numCharToDelete));
+    } catch {
+      return false;
+    }
+  };
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const outputPreview = (vmgFilesText) => {
+    try {
+      let previewText = "[";
+
+      for (let i = 0; i < vmgFilesText.length; i++) {
+        const date = vmgFilesText[i].match(/Date:([\s\S]+)\r\nTEXT;/)[1];
+        const cell = vmgFilesText[i].match(/CELL:([\s\S]+)\r\nX-ANNI/)[1];
+        const textEncoded = vmgFilesText[i].match(/QUOTED-PRINTABLE:([\s\S]+)END:VBODY/)[1];
+        const textBeforeDecoded = textEncoded.replaceAll("=\r\n", "").replaceAll("%", "=25").replaceAll("=", "%");
+
+        let textDecoded = "";
+
+        for (let j = 2; j <= textBeforeDecoded.length; j++) {
+          if (toDecodeURI(textBeforeDecoded, j)) {
+            textDecoded = toDecodeURI(textBeforeDecoded, j);
+            if (j > 2) textDecoded += textBeforeDecoded.slice(-j, -2);
+            break;
+          }
+        }
+        textDecoded = textDecoded.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\r", "\\r").replaceAll("\n", "\\n");
+        if (i != 0) previewText += `,\n`;
+        previewText += `{"date": "${date}", "cell": "${cell}", "body": "${textDecoded}"}`;
+      }
+      previewText += "]";
+      setDisabledDownload(false);
+      return previewText;
+    } catch {
+      return "Can't convert the file(s).";
+    }
+  };
+  
+  const toJSON = (blobData, filename) => {
+    const blob = new Blob([blobData], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleInput = async (e) => {
+    const vmgFiles = e.target.files;
+    let vmgFilesText = [];
+  
+    for (let i = 0; i < vmgFiles.length; i++) {
+      vmgFilesText.push(await vmgFiles[i].text());
+    }
+
+    vmgFilesText.length && setPreview(outputPreview(vmgFilesText));
+  };
+  
+  const handleClear = () => {
+    vmgfilesInput.current.value = null;
+    setDisabledDownload(true);
+    setPreview("Preview of the JSON file will be here.");
+  };
+  
+  const handleDownload = () => {
+    const blobData = preview;
+    
+    toJSON(blobData, "sms.json");
+  };
+  
+  return (<>
+    <main>
+      <img src="conversation.flaticon.png" className="position-absolute top-0 start-50 translate-middle-x" />
+      <h1 className="text-center text-light mt-5 pt-3 pb-3 rounded-4 position-relative bg-dark bg-opacity-75">
+        VMG to JSON
+      </h1>
+      <div className="border border-3 rounded-4 position-relative">
+        <div className="d-flex py-3 mx-5">
+          <input type="file" multiple ref={vmgfilesInput} className="form-control" onInput={handleInput} />
+          <button id="clear-btn" className="btn btn-secondary" onClick={handleClear}>
+            Clear
+          </button>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+        <div id="preview" className="overflow-scroll border rounded-4 p-3 mx-5 mb-3 bg-white">
+          {preview}
+        </div>
+        <div className="d-flex">
+          <button id="download-btn" className="btn btn-primary form-control mx-5 mb-3" disabled={disabledDownload} onClick={handleDownload}>
+            Download
+          </button>
+        </div>
+      </div>
+    </main>
+    <footer className="p-3 rounded-4 position-relative bg-dark bg-opacity-75">
+      <a href="https://www.flaticon.com/free-icons/sms" title="sms icons" className="link-light">
+        Sms icons created by Creative Stall Premium - Flaticon
+      </a>
+    </footer>
+  </>);
 }
